@@ -1,0 +1,188 @@
+// ThumbGenius Database Schema
+// Using Prisma with Supabase (PostgreSQL)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?
+  
+  // YouTube Connection
+  youtubeChannelId    String?   @unique
+  youtubeAccessToken  String?
+  youtubeRefreshToken String?
+  youtubeTokenExpiry  DateTime?
+  
+  // Subscription
+  plan              Plan      @default(FREE)
+  stripeCustomerId  String?   @unique
+  stripeSubscriptionId String?
+  subscriptionStatus SubscriptionStatus @default(INACTIVE)
+  
+  // Usage Tracking
+  generationsThisMonth Int     @default(0)
+  generationsResetAt   DateTime @default(now())
+  
+  // Timestamps
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  channels      Channel[]
+  thumbnails    Thumbnail[]
+  generations   Generation[]
+}
+
+model Channel {
+  id              String    @id @default(cuid())
+  youtubeId       String    @unique
+  title           String
+  description     String?
+  thumbnailUrl    String?
+  subscriberCount Int       @default(0)
+  videoCount      Int       @default(0)
+  viewCount       BigInt    @default(0)
+  
+  // Channel DNA (learned patterns)
+  avgCtr          Float?
+  topColors       String[]  // JSON array of hex colors
+  topFonts        String[]
+  faceUsageRate   Float?    // % of thumbnails with faces
+  textUsageRate   Float?    // % of thumbnails with text
+  
+  // Timestamps
+  lastAnalyzedAt  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videos          Video[]
+}
+
+model Video {
+  id              String    @id @default(cuid())
+  youtubeId       String    @unique
+  title           String
+  description     String?
+  publishedAt     DateTime?
+  
+  // Thumbnail Data
+  currentThumbnailUrl String?
+  
+  // Performance Metrics
+  viewCount       BigInt    @default(0)
+  likeCount       Int       @default(0)
+  commentCount    Int       @default(0)
+  ctr             Float?    // Click-through rate (if available)
+  impressions     BigInt?
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  channelId       String
+  channel         Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  thumbnails      Thumbnail[]
+}
+
+model Thumbnail {
+  id              String    @id @default(cuid())
+  
+  // Image Data
+  imageUrl        String
+  imageKey        String?   // Storage key if using S3/R2
+  width           Int       @default(1280)
+  height          Int       @default(720)
+  
+  // Generation Details
+  prompt          String?
+  style           String?   // "viral", "minimal", "dramatic", etc.
+  
+  // Prediction
+  predictedCtr    Float?
+  confidenceScore Float?
+  
+  // Status
+  status          ThumbnailStatus @default(GENERATED)
+  isSelected      Boolean   @default(false)
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  
+  // Relations
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videoId         String?
+  video           Video?    @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  generationId    String
+  generation      Generation @relation(fields: [generationId], references: [id], onDelete: Cascade)
+}
+
+model Generation {
+  id              String    @id @default(cuid())
+  
+  // Input
+  prompt          String
+  style           String?
+  videoTitle      String?
+  
+  // Output
+  thumbnailCount  Int       @default(4)
+  
+  // Cost Tracking
+  creditsUsed     Int       @default(1)
+  
+  // Status
+  status          GenerationStatus @default(PENDING)
+  error           String?
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
+  
+  // Relations
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  thumbnails      Thumbnail[]
+}
+
+// Enums
+enum Plan {
+  FREE
+  PRO
+  TEAM
+}
+
+enum SubscriptionStatus {
+  INACTIVE
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum ThumbnailStatus {
+  GENERATING
+  GENERATED
+  FAILED
+  UPLOADED
+}
+
+enum GenerationStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
